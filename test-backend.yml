@@ -1,0 +1,81 @@
+config:
+  target: "http://localhost:3001"
+  phases:
+    - duration: 30
+      arrivalRate: 5
+  http:
+    timeout: 30
+  defaults:
+    headers:
+      Content-Type: "application/json"
+scenarios:
+  - flow:
+      - post:
+          url: "/api/auth/register"
+          json:
+            email: "testuser_{{ $uuid }}@example.com"
+            password: "P@ssword123"
+            nom: "Dupont"
+            prenom: "Jean"
+            tel: "0612345678"
+            role: "proprietaire"
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "testuser_{{ $uuid }}@example.com"
+            password: "P@ssword123"
+          capture:
+            - json: "$.token"
+              as: "token"
+      - get:
+          url: "/api/boats"
+      - think: 1
+      - post:
+          url: "/api/boats"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          beforeRequest: |
+            function(userContext, events, done) {
+              const lon = (Math.random() * 180 - 90).toFixed(5);
+              const lat = (Math.random() * 360 - 180).toFixed(5);
+              userContext.vars.lon = lon;
+              userContext.vars.lat = lat;
+              return done();
+            }
+          json:
+            nom: "Bateau de test {{ $uuid }}"
+            type: "voilier"
+            longueur: 10
+            prix_jour: 100
+            capacite: 4
+            image: "C:/laragon/www/SailingLoc/backend/images/test.png"
+            localisation: "{{ lon }},{{ lat }}"
+          capture:
+            - json: "$.id"
+              as: "boatId"
+      - think: 1
+      - put:
+          url: "/api/boats/{{ boatId }}"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          beforeRequest: |
+            function(userContext, events, done) {
+              const lon = (Math.random() * 180 - 90).toFixed(5);
+              const lat = (Math.random() * 360 - 180).toFixed(5);
+              userContext.vars.lon = lon;
+              userContext.vars.lat = lat;
+              return done();
+            }
+          json:
+            nom: "Bateau de test modifié {{ $uuid }}"
+            type: "bateau à moteur"
+            longueur: 12
+            prix_jour: 120
+            capacite: 6
+            image: "C:/laragon/www/SailingLoc/backend/images/test.png"
+            localisation: "{{ lon }},{{ lat }}"
+      - think: 1
+      - delete:
+          url: "/api/boats/{{ boatId }}"
+          headers:
+            Authorization: "Bearer {{ token }}"
