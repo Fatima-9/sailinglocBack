@@ -31,10 +31,10 @@ router.post("/register", async (req, res) => {
     }
 
     // Validation du rôle
-    const validRoles = ['admin', 'locataire', 'proprietaire'];
-    const userRole = role || 'locataire'; // Rôle par défaut
+    const validRoles = ['admin', 'client', 'proprietaire'];
+    const userRole = role || 'client'; // Rôle par défaut
     if (!validRoles.includes(userRole)) {
-      return res.status(400).json({ message: 'Rôle invalide. Rôles autorisés: admin, locataire, proprietaire' });
+      return res.status(400).json({ message: 'Rôle invalide. Rôles autorisés: admin, client, proprietaire' });
     }
 
     // Check if user already exists with this email
@@ -51,7 +51,7 @@ router.post("/register", async (req, res) => {
       nom,
       prenom,
       tel,
-      role: role || "user",
+      role: userRole,
     });
     await user.save();
     // Create token
