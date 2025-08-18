@@ -12,7 +12,7 @@ const boatSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['voilier', 'bateau à moteur', 'catamaran'],
+    enum: ['voilier', 'yacht', 'catamaran'],
     trim: true
   },
   longueur: { 

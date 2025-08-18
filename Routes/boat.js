@@ -101,9 +101,9 @@ router.post('/', requireJsonContent, protect, authorize('proprietaire', 'admin')
       });
     }
 
-    if (!['voilier', 'bateau à moteur', 'catamaran'].includes(type.toLowerCase())) {
+    if (!['voilier', 'yacht', 'catamaran'].includes(type.toLowerCase())) {
       return res.status(400).json({ 
-        message: 'Le type doit être l\'un des suivants : voilier, bateau à moteur, catamaran' 
+        message: 'Le type doit être l\'un des suivants : voilier, yacht, catamaran' 
       });
     }
 
@@ -259,7 +259,7 @@ router.put('/:id', requireJsonContent, protect, authorize('proprietaire', 'admin
     
     if (updateData.type) {
       const typeLower = typeTrim.toLowerCase();
-      const typesAutorises = ['voilier', 'bateau à moteur', 'catamaran'];
+      const typesAutorises = ['voilier', 'yacht', 'catamaran'];
       if (!typesAutorises.includes(typeLower)) {
         return res.status(400).json({ message: `Le type doit être l'un des suivants : ${typesAutorises.join(', ')}` });
       }

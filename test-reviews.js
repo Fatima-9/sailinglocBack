@@ -84,7 +84,7 @@ const createTestData = async () => {
 
     const boat3 = await Boat.create({
       nom: 'Yacht Prestige',
-      type: 'bateau à moteur',
+      type: 'yacht',
       longueur: 18,
       prix_jour: 300,
       capacite: 10,

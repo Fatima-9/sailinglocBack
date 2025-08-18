@@ -68,7 +68,7 @@ scenarios:
             }
           json:
             nom: "Bateau de test modifié {{ $uuid }}"
-            type: "bateau à moteur"
+            type: "yacht"
             longueur: 12
             prix_jour: 120
             capacite: 6
