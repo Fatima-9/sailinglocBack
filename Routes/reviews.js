@@ -10,8 +10,26 @@ const router = express.Router();
 // @access  Private
 router.post('/', protect, async (req, res) => {
   try {
-    const { boatId, bookingId, rating, comment, images } = req.body;
+    const { boatId, bookingId, rating, comment } = req.body;
     const userId = req.user.id;
+
+    console.log('📝 Création avis - Données reçues:', { boatId, bookingId, rating, comment });
+
+    // Validation des champs requis
+    if (!boatId || !rating || !comment) {
+      return res.status(400).json({ 
+        message: 'Les champs boatId, rating et comment sont obligatoires' 
+      });
+    }
+
+    // Validation du rating
+    if (rating < 1 || rating > 5) {
+      return res.status(400).json({ 
+        message: 'Le rating doit être entre 1 et 5' 
+      });
+    }
+
+
 
     // Vérifier si l'utilisateur a déjà laissé un avis pour ce bateau
     const existingReview = await Review.findOne({ 
@@ -40,14 +58,17 @@ router.post('/', protect, async (req, res) => {
       boatId,
       bookingId,
       rating,
-      comment,
-      images: images || []
+      comment
     });
+
+    console.log('💾 Sauvegarde de l\'avis:', review);
 
     await review.save();
 
     // Mettre à jour la note moyenne du bateau
     const averageRating = await Review.getAverageRating(boatId);
+
+    console.log('✅ Avis créé avec succès, note moyenne mise à jour:', averageRating);
 
     res.status(201).json({
       success: true,
@@ -55,8 +76,21 @@ router.post('/', protect, async (req, res) => {
       averageRating
     });
   } catch (error) {
-    console.error('Erreur création avis:', error);
-    res.status(500).json({ message: 'Erreur serveur' });
+    console.error('❌ Erreur création avis:', error);
+    
+    // Gestion spécifique des erreurs de validation Mongoose
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ 
+        message: 'Erreur de validation', 
+        errors: validationErrors 
+      });
+    }
+    
+    res.status(500).json({ 
+      message: 'Erreur serveur lors de la création de l\'avis',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Erreur interne'
+    });
   }
 });
 
@@ -121,6 +155,30 @@ router.get('/my-reviews', protect, async (req, res) => {
   }
 });
 
+// @desc    Obtenir les avis 5 étoiles pour la page d'accueil
+// @route   GET /api/reviews/five-stars
+// @access  Public
+router.get('/five-stars', async (req, res) => {
+  try {
+    const { limit = 3 } = req.query;
+    
+    const reviews = await Review.find({ rating: 5 })
+      .populate('userId', 'nom prenom')
+      .populate('boatId', 'nom image destination type')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit));
+
+    res.json({
+      success: true,
+      count: reviews.length,
+      data: reviews
+    });
+  } catch (error) {
+    console.error('Erreur récupération avis 5 étoiles:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
 // @desc    Obtenir un avis spécifique
 // @route   GET /api/reviews/:id
 // @access  Public
@@ -172,7 +230,7 @@ router.put('/:id/helpful', async (req, res) => {
 // @access  Private
 router.put('/:id', protect, async (req, res) => {
   try {
-    const { rating, comment, images } = req.body;
+    const { rating, comment } = req.body;
     const review = await Review.findById(req.params.id);
 
     if (!review) {
@@ -186,7 +244,6 @@ router.put('/:id', protect, async (req, res) => {
 
     review.rating = rating || review.rating;
     review.comment = comment || review.comment;
-    review.images = images || review.images;
 
     await review.save();
 
@@ -274,7 +331,7 @@ router.get('/top', async (req, res) => {
     
     const reviews = await Review.find({ rating: { $gte: 4 } })
       .populate('userId', 'nom prenom')
-      .populate('boatId', 'nom image localisation type')
+      .populate('boatId', 'nom image destination type')
       .sort({ createdAt: -1 }) // Tri par date de création décroissante (plus récent en premier)
       .limit(parseInt(limit));
 
@@ -289,46 +346,42 @@ router.get('/top', async (req, res) => {
   }
 });
 
-// @desc    Obtenir les avis 5 étoiles pour la page d'accueil
-// @route   GET /api/reviews/five-stars
-// @access  Public
-router.get('/five-stars', async (req, res) => {
-  try {
-    const { limit = 6 } = req.query;
-    
-    const reviews = await Review.find({ rating: 5 })
-      .populate('userId', 'nom prenom')
-      .populate('boatId', 'nom image localisation type')
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit));
 
-    res.json({
-      success: true,
-      count: reviews.length,
-      data: reviews
-    });
-  } catch (error) {
-    console.error('Erreur récupération avis 5 étoiles:', error);
-    res.status(500).json({ message: 'Erreur serveur' });
-  }
-});
 
 // @desc    Obtenir tous les avis (Admin)
 // @route   GET /api/reviews
 // @access  Private/Admin
 router.get('/', protect, authorize('admin'), async (req, res) => {
   try {
-    const { page = 1, limit = 10, rating, boatId } = req.query;
+    const { page = 1, limit = 10, rating, boatId, userId, search } = req.query;
     
     let query = {};
-    if (rating) query.rating = parseInt(rating);
-    if (boatId) query.boatId = boatId;
+    
+    // Filtre par note
+    if (rating && rating !== 'all') {
+      query.rating = parseInt(rating);
+    }
+    
+    // Filtre par bateau
+    if (boatId && boatId !== 'all') {
+      query.boatId = boatId;
+    }
+    
+    // Filtre par utilisateur
+    if (userId && userId !== 'all') {
+      query.userId = userId;
+    }
+    
+    // Recherche textuelle dans les commentaires
+    if (search && search.trim() !== '') {
+      query.comment = { $regex: search, $options: 'i' };
+    }
 
     const skip = (page - 1) * limit;
     
     const reviews = await Review.find(query)
       .populate('userId', 'nom prenom email')
-      .populate('boatId', 'nom image localisation')
+      .populate('boatId', 'nom image destination')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -339,11 +392,13 @@ router.get('/', protect, authorize('admin'), async (req, res) => {
       success: true,
       count: reviews.length,
       total,
+      reviews: reviews, // Changé de 'data' à 'reviews' pour correspondre au frontend
       pagination: {
-        current: parseInt(page),
-        pages: Math.ceil(total / limit)
-      },
-      data: reviews
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalReviews: total,
+        reviewsPerPage: parseInt(limit)
+      }
     });
   } catch (error) {
     console.error('Erreur récupération avis admin:', error);

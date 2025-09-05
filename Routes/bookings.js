@@ -18,8 +18,8 @@ router.post('/', protect, async (req, res) => {
       return res.status(400).json({ message: 'La date de début doit être dans le futur' });
     }
 
-    if (new Date(endDate) <= new Date(startDate)) {
-      return res.status(400).json({ message: 'La date de fin doit être après la date de début' });
+    if (new Date(endDate) < new Date(startDate)) {
+      return res.status(400).json({ message: 'La date de fin doit être égale ou postérieure à la date de début' });
     }
 
     // Vérifier si le bateau est disponible pour ces dates
@@ -38,10 +38,10 @@ router.post('/', protect, async (req, res) => {
       return res.status(400).json({ message: 'Le bateau n\'est pas disponible pour ces dates' });
     }
 
-    // Calculer le prix total en récupérant le prix du bateau
+    // Calculer le prix total en récupérant le prix du bateau (minimum 1 jour)
     const start = new Date(startDate);
     const end = new Date(endDate);
-    const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+    const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
     
     // Récupérer le prix du bateau depuis la base de données
     const boat = await mongoose.model('Boat').findById(boatId);
@@ -95,6 +95,77 @@ router.get('/my-bookings', protect, async (req, res) => {
   }
 });
 
+// @desc    Obtenir les réservations d'un bateau spécifique
+// @route   GET /api/bookings/boat/:boatId
+// @access  Public (pour afficher le calendrier)
+router.get('/boat/:boatId', async (req, res) => {
+  try {
+    const { boatId } = req.params;
+    
+    // Récupérer toutes les réservations pour ce bateau (pending et confirmed)
+    const bookings = await Booking.find({ 
+      boatId,
+      status: { $in: ['pending', 'confirmed'] } // Seulement les réservations actives
+    })
+    .select('startDate endDate status')
+    .sort({ startDate: 1 });
+    
+    console.log(`Bookings found for boat ${boatId}:`, bookings.length);
+
+    res.json({
+      success: true,
+      count: bookings.length,
+      data: bookings
+    });
+  } catch (error) {
+    console.error('Erreur récupération réservations bateau:', error);
+    res.status(500).json({ message: 'Erreur serveur: ' + error.message });
+  }
+});
+
+// @desc    Obtenir les réservations des bateaux du propriétaire
+// @route   GET /api/bookings/owner
+// @access  Private/Propriétaire
+router.get('/owner', protect, authorize('proprietaire'), async (req, res) => {
+  try {
+    console.log('User ID:', req.user.id);
+    console.log('User role:', req.user.role);
+    
+    // Récupérer tous les bateaux du propriétaire
+    const boats = await mongoose.model('Boat').find({ proprietaire: req.user.id });
+    console.log('Boats found:', boats.length);
+    console.log('Boat IDs:', boats.map(b => b._id));
+    
+    if (boats.length === 0) {
+      return res.json({
+        success: true,
+        count: 0,
+        data: [],
+        message: 'Aucun bateau trouvé pour ce propriétaire'
+      });
+    }
+    
+    const boatIds = boats.map(boat => boat._id);
+
+    // Récupérer toutes les réservations pour ces bateaux
+    const bookings = await Booking.find({ boatId: { $in: boatIds } })
+      .populate('userId', 'nom prenom email')
+      .populate('boatId', 'nom type image')
+      .sort({ createdAt: -1 });
+    
+    console.log('Bookings found:', bookings.length);
+
+    res.json({
+      success: true,
+      count: bookings.length,
+      data: bookings
+    });
+  } catch (error) {
+    console.error('Erreur récupération réservations propriétaire:', error);
+    res.status(500).json({ message: 'Erreur serveur: ' + error.message });
+  }
+});
+
 // @desc    Obtenir une réservation spécifique
 // @route   GET /api/bookings/:id
 // @access  Private
@@ -120,6 +191,69 @@ router.get('/:id', protect, async (req, res) => {
   } catch (error) {
     console.error('Erreur récupération réservation:', error);
     res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// @desc    Confirmer ou refuser une réservation (Propriétaire)
+// @route   PUT /api/bookings/:id/owner-action
+// @access  Private/Propriétaire
+router.put('/:id/owner-action', protect, authorize('proprietaire'), async (req, res) => {
+  try {
+    const { action } = req.body; // 'confirm' ou 'refuse'
+    const { id } = req.params;
+
+    console.log('Owner action:', action, 'on booking:', id);
+
+    const booking = await Booking.findById(id).populate('boatId', 'proprietaire');
+    
+    if (!booking) {
+      return res.status(404).json({ message: 'Réservation non trouvée' });
+    }
+
+    console.log('Booking found:', booking._id);
+    console.log('Boat owner:', booking.boatId.proprietaire);
+    console.log('Current user:', req.user.id);
+
+    // Vérifier que l'utilisateur est bien le propriétaire du bateau
+    if (booking.boatId.proprietaire.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Vous n\'êtes pas autorisé à gérer cette réservation' });
+    }
+
+    let newStatus;
+    let message;
+
+    if (action === 'confirm') {
+      newStatus = 'confirmed';
+      message = 'Réservation confirmée avec succès';
+      console.log('Confirming booking:', id);
+    } else if (action === 'refuse') {
+      newStatus = 'cancelled';
+      message = 'Réservation refusée';
+      console.log('Refusing booking:', id);
+      
+      // Rembourser le client via Stripe si nécessaire
+      // TODO: Implémenter le remboursement Stripe
+    } else {
+      return res.status(400).json({ message: 'Action invalide. Utilisez "confirm" ou "refuse"' });
+    }
+
+    const updatedBooking = await Booking.findByIdAndUpdate(
+      id,
+      { status: newStatus },
+      { new: true, runValidators: true }
+    ).populate('userId', 'nom prenom email')
+     .populate('boatId', 'nom type image');
+
+    console.log('Booking updated successfully:', updatedBooking._id, 'Status:', updatedBooking.status);
+
+    res.json({
+      success: true,
+      message,
+      data: updatedBooking
+    });
+  } catch (error) {
+    console.error('Erreur action propriétaire sur réservation:', error);
+    res.status(500).json({ message: 'Erreur serveur: ' + error.message });
   }
 });
 
@@ -247,7 +381,7 @@ router.put('/:id/status', protect, authorize('admin'), async (req, res) => {
      .populate('boatId', 'name images price');
 
     if (!booking) {
-      return res.status(404).json({ message: 'Réservation non trouvée' });
+      return res.status(404).json({ message: 'Réservation non trouvé' });
     }
 
     res.json({
@@ -259,5 +393,7 @@ router.put('/:id/status', protect, authorize('admin'), async (req, res) => {
     res.status(500).json({ message: 'Erreur serveur' });
   }
 });
+
+
 
 export default router;

@@ -33,15 +33,7 @@ const reviewSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
-  images: [{
-    type: String,
-    validate: {
-      validator: function(v) {
-        return v.length <= 5; // Maximum 5 images par avis
-      },
-      message: 'Maximum 5 images autorisées par avis'
-    }
-  }],
+
   createdAt: {
     type: Date,
     default: Date.now

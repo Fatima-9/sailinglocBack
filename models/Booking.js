@@ -67,8 +67,19 @@ bookingSchema.methods.isDateRangeAvailable = function() {
 
 // Méthode pour calculer la durée en jours
 bookingSchema.methods.getDurationInDays = function() {
-  const diffTime = Math.abs(this.endDate - this.startDate);
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const start = new Date(this.startDate);
+  const end = new Date(this.endDate);
+  
+  // Réinitialiser l'heure pour la comparaison des dates
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  
+  const diffTime = end.getTime() - start.getTime();
+  const diffDays = diffTime / (1000 * 60 * 60 * 24);
+  
+  // Une réservation d'un jour (même date) compte pour 1 jour
+  // Une réservation de plusieurs jours compte le nombre exact de jours
+  return Math.max(1, Math.ceil(diffDays));
 };
 
 const Booking = mongoose.model('Booking', bookingSchema);
