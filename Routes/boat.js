@@ -17,9 +17,27 @@ function requireJsonContent(req, res, next) {
 router.get('/', async (req, res) => {
   try {
     const boats = await Boat.find();
-    res.json(boats);
+    
+    // Vérifier si le client demande l'ancien format
+    const legacyFormat = req.query.legacy === 'true';
+    
+    if (legacyFormat) {
+      // Ancien format : retourner directement le tableau
+      res.json(boats);
+    } else {
+      // Nouveau format : structure standardisée
+      res.json({
+        success: true,
+        count: boats.length,
+        data: boats
+      });
+    }
   } catch (error) {
-    res.status(500).json({ message: 'Erreur serveur', error });
+    res.status(500).json({ 
+      success: false,
+      message: 'Erreur serveur', 
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Erreur interne'
+    });
   }
 });
 
@@ -30,10 +48,15 @@ router.get('/my-boats', protect, authorize('proprietaire', 'admin'), async (req,
       .populate('proprietaire', 'nom prenom email')
       .sort({ createdAt: -1 });
 
-    res.json(boats);
+    res.json({
+      success: true,
+      count: boats.length,
+      data: boats
+    });
   } catch (error) {
     console.error('Erreur lors de la récupération des bateaux:', error);
     res.status(500).json({ 
+      success: false,
       message: 'Erreur serveur lors de la récupération des bateaux',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Erreur interne'
     });
@@ -48,21 +71,27 @@ router.get('/:id', async (req, res) => {
 
     if (!boat) {
       return res.status(404).json({ 
+        success: false,
         message: 'Bateau non trouvé' 
       });
     }
 
-    res.json(boat);
+    res.json({
+      success: true,
+      data: boat
+    });
   } catch (error) {
     console.error('Erreur lors de la récupération du bateau:', error);
     
     if (error.kind === 'ObjectId') {
       return res.status(400).json({ 
+        success: false,
         message: 'ID de bateau invalide' 
       });
     }
 
     res.status(500).json({ 
+      success: false,
       message: 'Erreur serveur lors de la récupération du bateau',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Erreur interne'
     });
