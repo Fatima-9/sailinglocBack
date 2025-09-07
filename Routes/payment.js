@@ -12,6 +12,10 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // Crée une réservation "pending" et une session Stripe Checkout
 router.post('/create-checkout-session', protect, async (req, res) => {
   try {
+    console.log('🔍 Variables d\'environnement:');
+    console.log('  - FRONTEND_URL:', process.env.FRONTEND_URL);
+    console.log('  - STRIPE_SECRET_KEY:', process.env.STRIPE_SECRET_KEY ? 'Définie' : 'MANQUANTE');
+    
     const { boatId, startDate, endDate, numberOfGuests, specialRequests } = req.body;
 
     if (!boatId || !startDate || !endDate) {
@@ -61,8 +65,16 @@ router.post('/create-checkout-session', protect, async (req, res) => {
       paymentStatus: 'paid'
     });
 
-    const successURL = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/success?session_id={CHECKOUT_SESSION_ID}`;
-    const cancelURL = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/cancel?bookingId=${booking._id}`;
+    // Vérifier que FRONTEND_URL est définie
+    if (!process.env.FRONTEND_URL) {
+      console.error('❌ FRONTEND_URL non définie !');
+      return res.status(500).json({ 
+        message: 'Configuration manquante: FRONTEND_URL doit être définie' 
+      });
+    }
+
+    const successURL = `${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelURL = `${process.env.FRONTEND_URL}/payment/cancel?bookingId=${booking._id}`;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -99,8 +111,12 @@ router.post('/create-checkout-session', protect, async (req, res) => {
 
     return res.status(200).json({ url: session.url, bookingId: booking._id });
   } catch (err) {
-    console.error('Stripe session error', err);
-    return res.status(500).json({ message: 'Erreur lors de la création du paiement' });
+    console.error('Erreur détaillée:', err);
+    console.error('Message:', err.message);
+    console.error('Stack:', err.stack);
+    return res.status(500).json({ 
+      message: 'Erreur lors de la création du paiement',
+    });
   }
 });
 
