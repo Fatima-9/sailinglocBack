@@ -32,8 +32,8 @@ async function createAdmin() {
     const adminData = {
       nom: 'Admin',
       prenom: 'Système',
-      email: 'admin@sailingloc.com',
-      password: 'admin123', // Sera hashé automatiquement
+      email: 'sailinglocequipe@gmail.com',
+      password: 'Gtfa2120@', // Sera hashé automatiquement
       tel: '+33123456789',
       role: 'admin',
       isProfessionnel: false,
